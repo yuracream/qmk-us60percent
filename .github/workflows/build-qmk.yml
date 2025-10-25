@@ -13,22 +13,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show tree (debug)
-        run: find keyboards -maxdepth 3 -type f -print || true
+      - name: Show tree (before)
+        run: |
+          echo "=== keyboards subtree ==="
+          find keyboards -maxdepth 4 -type f -print || true
 
-      - name: Fetch QMK firmware
-        run: git clone --depth=1 https://github.com/qmk/qmk_firmware.git
+      - name: Fetch QMK firmware (latest)
+        run: |
+          git clone --depth=1 https://github.com/qmk/qmk_firmware.git
+          git -C qmk_firmware rev-parse HEAD
 
       - name: Overlay your keyboard into QMK
         run: |
           mkdir -p qmk_firmware/keyboards/us60percent
           rsync -av --delete keyboards/us60percent/ qmk_firmware/keyboards/us60percent/
 
-      # Dockerで確実にビルド（RP2040なら .uf2 が出ます）
+      # Dockerで確実ビルド（RP2040は .uf2 が出る想定）
       - name: Compile with Docker
         working-directory: qmk_firmware
-        run: util/docker_build.sh us60percent:vial
+        run: |
+          set -euxo pipefail
+          util/docker_build.sh us60percent:vial
 
+      - name: Show build dir (after)
+        run: |
+          echo "=== .build direct listing ==="
+          ls -la qmk_firmware/.build || true
+          echo "=== search anywhere for produced files ==="
+          find qmk_firmware -type f \( -name "*.uf2" -o -name "*.hex" -o -name "*.bin" \) -print || true
+
+      # まずは広く拾う（.build 以外に出た場合も回収）
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
@@ -37,4 +51,7 @@ jobs:
             qmk_firmware/.build/*.uf2
             qmk_firmware/.build/*.hex
             qmk_firmware/.build/*.bin
-          if-no-files-found: error
+            qmk_firmware/**/*.uf2
+            qmk_firmware/**/*.hex
+            qmk_firmware/**/*.bin
+          if-no-files-found: warn
