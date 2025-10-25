@@ -1,0 +1,40 @@
+name: Build QMK (us60percent:vial)
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "keyboards/us60percent/**"
+      - ".github/workflows/build-qmk.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show tree (debug)
+        run: find keyboards -maxdepth 3 -type f -print || true
+
+      - name: Fetch QMK firmware
+        run: git clone --depth=1 https://github.com/qmk/qmk_firmware.git
+
+      - name: Overlay your keyboard into QMK
+        run: |
+          mkdir -p qmk_firmware/keyboards/us60percent
+          rsync -av --delete keyboards/us60percent/ qmk_firmware/keyboards/us60percent/
+
+      # Dockerで確実にビルド（RP2040なら .uf2 が出ます）
+      - name: Compile with Docker
+        working-directory: qmk_firmware
+        run: util/docker_build.sh us60percent:vial
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.ref_name }}-${{ github.run_number }}
+          path: |
+            qmk_firmware/.build/*.uf2
+            qmk_firmware/.build/*.hex
+            qmk_firmware/.build/*.bin
+          if-no-files-found: error
